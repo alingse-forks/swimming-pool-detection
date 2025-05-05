@@ -35,14 +35,15 @@ class PoolDetector:
             model = model.to(self.device)
         return model
 
-    def detect(self, img, heatmap_thresh=170):
+    def detect(self, img, heatmap_thresh=140, min_blue=200):
         """Main method for swimming pool detection.
 
         Args:
             img: Can be either:
                 - str: Path of image to process
                 - np.array: Image as numpy array (BGR or RGB format)
-            heatmap_thresh (int, optional): Heatmap threshold. Defaults to 170.
+            heatmap_thresh (int, optional): Heatmap threshold. Defaults to 140.
+            min_blue (int, optional): Minimum blue pixels required to keep. Defaults to 200.
 
         Returns:
             list: List that contains swimming pool coordinates.
@@ -63,7 +64,7 @@ class PoolDetector:
         heatmap = self.generate_heatmap(img)
         pools_list = self.find_pools(heatmap, heatmap_thresh)
         # Filter based on blue pixels
-        filtered_pools = self.filter_blue(img, pools_list)
+        filtered_pools = self.filter_blue(img, pools_list, min_blue=min_blue)
         return filtered_pools
 
     def generate_heatmap(self, img):
@@ -137,7 +138,6 @@ class PoolDetector:
             area = hsv[y1:y2, x1:x2]
             mask = cv2.inRange(area, lower_blue, upper_blue)
             blue_count = cv2.countNonZero(mask)
-            print(blue_count, "blue_count")
             if blue_count >= min_blue:
                 filtered.append((y, x))
 
@@ -161,7 +161,7 @@ class PoolDetector:
         Returns:
             list: List that contains swimming pool coordinates.
         """
-        heatmap = cv2.GaussianBlur(heatmap, (15, 15), 0)
+        heatmap = cv2.GaussianBlur(heatmap, (9, 9), 0)
         _, heatmap = cv2.threshold(heatmap, threshold, 255, 0)
         contours, _ = cv2.findContours(heatmap, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours = [x for x in contours if cv2.contourArea(x) >= min_contour_area]
