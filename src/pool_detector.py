@@ -61,8 +61,10 @@ class PoolDetector:
                     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         heatmap = self.generate_heatmap(img)
-        pools_dict = self.find_pools(heatmap, heatmap_thresh)
-        return pools_dict
+        pools_list = self.find_pools(heatmap, heatmap_thresh)
+        # Filter based on blue pixels
+        filtered_pools = self.filter_blue(img, pools_list)
+        return filtered_pools
 
     def generate_heatmap(self, img):
         """Method to generate a heatmap from CNN class activation maps (CAMs).
@@ -101,6 +103,45 @@ class PoolDetector:
         heatmap = 1 - heatmap
         heatmap = (heatmap * 255).astype(np.uint8)
         return heatmap
+
+    @staticmethod
+    def filter_blue(img, pools_list, box_size=40, min_blue=200):
+        """Filter pools based on blue pixel count in surrounding area.
+
+        Args:
+            img: Original RGB image
+            pools_list: List of pool coordinates (y,x)
+            box_size: Size of area to check around each point
+            min_blue: Minimum blue pixels required to keep
+
+        Returns:
+            Filtered list of pool coordinates
+        """
+        filtered = []
+        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+
+        # Define blue color range in HSV
+        #lower_blue = np.array([100, 50, 50])
+        #upper_blue = np.array([140, 255, 255])
+        lower_blue = np.array([80, 70, 100])
+        upper_blue = np.array([130, 255, 255])
+
+        for y, x in pools_list:
+            # Get box area
+            y1 = max(0, y - box_size//2)
+            y2 = min(img.shape[0], y + box_size//2)
+            x1 = max(0, x - box_size//2)
+            x2 = min(img.shape[1], x + box_size//2)
+
+            # Count blue pixels
+            area = hsv[y1:y2, x1:x2]
+            mask = cv2.inRange(area, lower_blue, upper_blue)
+            blue_count = cv2.countNonZero(mask)
+            print(blue_count, "blue_count")
+            if blue_count >= min_blue:
+                filtered.append((y, x))
+
+        return filtered
 
     @staticmethod
     def find_pools(heatmap, threshold, min_contour_area=2):
