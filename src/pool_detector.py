@@ -25,23 +25,40 @@ class PoolDetector:
         self.model = self.load_model(weights_path)
 
     def load_model(self, weights_path):
-        model = Model().to(self.device)
-        model.load_state_dict(torch.load(weights_path))
+        # Force CPU device for model loading
+        device = torch.device('cpu')
+        model = Model().to(device)
+        model.load_state_dict(torch.load(weights_path, map_location=device))
         model.eval()
+        # Move to target device if different
+        if self.device.type != 'cpu':
+            model = model.to(self.device)
         return model
 
-    def detect(self, img_path, heatmap_thresh=170):
+    def detect(self, img, heatmap_thresh=170):
         """Main method for swimming pool detection.
 
         Args:
-            img_path (str): Path of image to process.
+            img: Can be either:
+                - str: Path of image to process
+                - np.array: Image as numpy array (BGR or RGB format)
             heatmap_thresh (int, optional): Heatmap threshold. Defaults to 170.
 
         Returns:
             list: List that contains swimming pool coordinates.
         """
-        img = Image.open(img_path)
-        img = np.array(img)
+        if isinstance(img, str):
+            img = Image.open(img)
+            img = np.array(img)
+        elif isinstance(img, np.ndarray):
+            # Handle different image formats
+            if len(img.shape) == 2:  # Grayscale (1 channel)
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+            elif len(img.shape) == 3:
+                if img.shape[2] == 4:  # RGBA (PNG with alpha)
+                    img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+                elif img.shape[2] == 3:  # BGR (OpenCV default)
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         heatmap = self.generate_heatmap(img)
         pools_dict = self.find_pools(heatmap, heatmap_thresh)
@@ -68,9 +85,11 @@ class PoolDetector:
             cam = self.model(batch, apply_avgpool=False)  # (1, 256, 100, 200)
             cam = cam * self.model.fc.weight.view((1, -1, 1, 1)).flip(1)  # class activation map weights
             cam = cam.mean(dim=1, keepdim=True)  # (1, 1, 100, 200)
+            # Get original image dimensions for interpolation
+            height, width = img.shape[:2]
             cam = torch.nn.functional.interpolate(
                 cam,
-                size=(800, 1600),
+                size=(height, width),
                 mode="bicubic",
                 align_corners=True,
             )
